@@ -1,0 +1,171 @@
+#!/bin/bash
+
+# Script Name: initialize_project
+# Description: Creates the entire directory structure for a Python data science project
+# Author: Mikeias Oliveira
+# Date: June 12, 2023
+# E-mail: mikeias.d.s.o@gmail.com
+# Linkedin: https://linkedin.com/in/mikeias-d-s-o@gmail.com
+# Version: 2.0
+
+VERSION="2.0"
+
+usage() {
+    echo "Usage: [--set-path] [--libraries] [--project-name ARG]"
+    echo "Options:"
+    echo "  -h, --help            Display this help message and exit."
+    echo "  -v, --version         Display the script version."
+    echo "  -p, --project-name    Project name."
+    echo "  -l, --libraries ARG   Python libraries to be installed."
+    echo "  --set-path            Set the path where your projects going to be stored"
+
+    exit 1
+}
+
+script_dir=$(dirname "$0")
+path=$(cat "$script_dir"/.init_project/path.txt)
+
+set_path() {
+    echo "CAUTION: The path to your project destination will be modified"
+    if [ -z "$1" ]; then
+        echo "Usage: initialize_project --set-path PATH"
+        return 1
+    else
+        # Load the variable from the file, if it exists
+        if [ -n "$path" ] && [ -e "$path" ]; then
+            true
+        else [ ! -f "$path" ]
+            mkdir "$script_dir"/.init_project || true
+            touch "$script_dir"/.init_project/path.txt 
+        fi
+        echo "NOTE: You only need to set your destination path once, yet you can change it whenever you want to."
+        echo "$1" > "$script_dir"/.init_project/path.txt
+        echo "Path was updated. Your new path is $1"
+        exit 0
+    fi
+}
+
+libs=()
+project_name=""
+
+if [ $# -eq 0 ]; then
+    usage
+fi
+
+# Check if the flag was provided
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+    --set-path)
+        shift
+        set_path "$1"
+        shift
+        ;;
+    -h|--help)
+        shift
+        usage
+        shift
+        ;;
+    -v|--version)
+        shift
+        echo $VERSION
+        exit 0
+        shift
+        ;;
+    -l|--libraries)
+        shift
+        while [ "$#" -gt 0 ] && [[ ! "$1" =~ ^- ]]; do
+            libs+=("$1")
+            shift
+        done
+        if [ ${#libs[@]} -eq 0 ]; then
+            echo "Error: No libraries specified after -l|--libraries."
+            exit 1
+        fi
+        echo "The following lib(s) going to be installed ${libs[*]}" 
+        ;;      
+    -p|--project-name)
+        shift
+        project_name=$1
+        echo "Project name defined as $project_name"
+        shift
+        ;;
+    *)
+        # Handle non-option arguments here
+        if [ -z "$project_name" ]; then
+            project_name=$1
+            echo "Project name defined as $project_name"
+        else
+            echo "Error: Unknown argument $1"
+            usage
+        fi
+        shift
+        ;;
+    esac
+done
+
+# Create project folder
+mkdir "$path/$project_name" || true
+echo "The project folder was created in $path/$project_name"
+cd "$path/$project_name" || echo "Filepath not found" || exit 1
+mkdir data notebooks "$project_name" output || true
+
+# Create subfolders in 'data'
+cd data || echo "Path not found" || exit 1
+mkdir raw_data processed_data || true
+cd ..
+
+# Create notebooks
+cd notebooks || echo "Path not found" || exit 1
+touch exploracao_dados.ipynb pre_processamento.ipynb modelagem.ipynb avaliacao.ipynb || true
+cd ..
+
+# Create subfolders in 'src'
+cd "$project_name" || echo "Path not found" || exit 1
+touch __init__.py data.py utils.py config.py || true
+cd ..
+
+# Create subfolders in 'output'
+touch setup.py
+mkdir scripts
+
+cd output || echo "Path not found" || exit 1
+mkdir modelos visualizacoes || true
+cd ..
+
+# Create 'requirements.txt'
+touch requirements.txt || true
+
+# Create environment.yml
+touch environment.yml || true
+
+# Create 'README.md' file
+echo "# $project_name" > README.md || true
+
+# Create '.gitignore' file
+echo "$project_name/config.py" > .gitignore
+printf "\n.venv/*\n./environment.yml\n__pycache__/*" >> .gitignore
+
+printf  "\nAll files created\n"
+echo "Creating virtual environment..."
+python3 -m venv .venv
+echo "Virtual environment was created"
+
+if [ -n "${libs[*]}" ]; then
+    echo "Installing libraries..."
+    source ./.venv/bin/activate
+    pip install --upgrade pip
+    for lib in "${libs[@]}"; do
+        echo "Installing $lib"
+        cmd="pip install $lib -q"
+        if $cmd; then
+            echo "The $lib library was successfully installed"
+            lib_version=$(python -c "import $lib;print($lib.__version__)")
+            echo "Adding library to the requirements"
+            echo "$lib==$lib_version" >> requirements.txt
+        else
+            echo "A problem occurs when installing $lib" 
+        fi
+    done
+fi
+
+echo "Project successfully initialized '$project_name'!"
